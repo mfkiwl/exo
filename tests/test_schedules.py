@@ -104,10 +104,10 @@ def test_simple_bind_expr():
 
 def test_simple_lift_alloc():
     @proc
-    def bar(n : size, A : i8[n]):
+    def bar(n : size, a : i8[n]):
         for i in par(0, n):
             tmp_a : i8
-            tmp_a = A[i]
+            tmp_a = a[i]
 
     print("old\n", bar)
     bar = bar.lift_alloc('tmp_a : _', n_lifts=1)
@@ -117,11 +117,12 @@ def test_simple_fission():
     @proc
     def bar(n : size, A : i8[n], B : i8[n], C : i8[n]):
         for i in par(0, n):
-            C[i] += A[i]
-            C[i] += B[i]
+            for j in par(0, n):
+                C[i,j] += A[i,j]
+                C[i,j] += B[i,j]
 
     print("old\n", bar)
-    bar = bar.fission_after('C[_] += A[_]')
+    bar = bar.fission_after('C[_] += A[_]', n_lifts=2)
     print("new\n", bar)
 
 

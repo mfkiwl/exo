@@ -22,6 +22,45 @@ import pytest
 #   Individual Load / Store / Zero Tests
 # --------------------------------------------------------------------------- #
 
+
+def test_hasan():
+    T = GemmTestBuilder('hasan')
+    T.add_body(['gemm_init_mem();',
+                'gemmini_flush(0);',
+                ''])
+    T.add_body(["hasan_lib_Context *ctxt;"])
+
+    @proc
+    def hasan(x : i8[16,16] @ DRAM, y : i8[16,16] @ DRAM):
+        tmp : i8[16,16] @ GEMM_SCRATCH
+        scale : f32
+        scale = 1.0
+        ld_i8(16,16, scale, x, tmp)
+        st_i8(16,16, tmp, y)
+    T.add_proc(hasan)
+
+    T.alloc_dram_2i8('x', 16, 16, 'i+j')
+    T.alloc_dram_2i8('y', 16, 16, '0')
+
+    T.add_body(['hasan(ctxt, x, y);',
+                '',
+                'gemmini_fence();',
+                '',
+                'if(check_eq_2i8(16,16, x, y)) {',
+                '    printf("Correct\\n");',
+                '} else {',
+                '    printf("Results Don\'t Match\\n");',
+                '    printf("Correct Result (x):\\n");',
+                '    print_2i8(16,16, x);',
+                '    printf("Computed Roundtrip (y):\\n");',
+                '    print_2i8(16,16, y);',
+                '    exit(1);',
+                '}',
+                ''])
+
+    T.compile().run()
+
+
 def test_ldst_i8_16():
     T = GemmTestBuilder('ldst_i8_16')
     T.add_body(['gemm_init_mem();',

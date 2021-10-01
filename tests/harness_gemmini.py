@@ -131,10 +131,10 @@ def gemmini_compile(mainfile, libfile, binfile):
     mainfile  = os.path.join(ENV.GEMM_BUILD_DIR, mainfile)
     libfile   = os.path.join(ENV.GEMM_BUILD_DIR, libfile)
     binfile   = os.path.join(ENV.GEMM_BUILD_DIR, binfile)
-    CMD = f"{ENV.COMPILE} -I{ENV.TMP_DIR} {mainfile} {libfile} -o {binfile}"
+    CMD = f"{ENV.COMPILE} -I{ENV.TMP_DIR} {mainfile} {libfile} -o {binfile} &> hasan.txt"
 
     if 0 != subprocess.call(CMD, shell=True):
-        raise OSError("Compilation Failed")
+        raise OSError(f"Compilation Failed")
 
 def gemmini_run(binfile):
     binfile   = os.path.join(ENV.GEMM_BUILD_DIR, binfile)
