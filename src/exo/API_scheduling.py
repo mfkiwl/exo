@@ -1421,6 +1421,13 @@ def cut_loop(proc, loop_cursor, cut_point):
     loopir  = Schedules.DoPartitionLoop(loopir, stmt, cut_point).result()
     return Procedure(loopir, _provenance_eq_Procedure=proc)
 
+@sched_op([NestedForSeqCursorA, NameA])
+def combine_loops(proc, nested_loops, new_iter_name):
+    stmt    = nested_loops._impl._node()
+    loopir  = Schedules.DoCombineLoops(proc._loopir_proc, stmt, new_iter_name).result()
+    return Procedure(loopir, _provenance_eq_Procedure=proc)
+
+
 @sched_op([NestedForSeqCursorA])
 def reorder_loops(proc, nested_loops):
     """

@@ -195,6 +195,49 @@ class _DoProductLoop(LoopIR_Rewrite):
         return super().map_e(e)
 
 
+class _DoCombineLoops(LoopIR_Rewrite):
+    def __init__(self, proc, loop_stmt, new_name):
+        self.stmt = loop_stmt
+        self.out_loop = loop_stmt
+        self.in_loop = self.out_loop.body[0]
+
+        if (len(self.out_loop.body) != 1 or
+                not isinstance(self.in_loop, LoopIR.Seq)):
+            raise SchedulingError(f"expected loop directly inside of "
+                                  f"{self.out_loop.iter} loop")
+
+        self.inside = False
+        self.new_var = Sym(new_name)
+
+        super().__init__(proc)
+
+    def map_s(self, s):
+        styp = type(s)
+        if s is self.stmt:
+            self.inside = True
+            body        = self.map_stmts(s.body[0].body)
+            self.inside = False
+            new_hi = LoopIR.BinOp('+', self.out_loop.hi, self.in_loop.hi, T.index, s.srcinfo)
+
+            return [s.update(iter=self.new_var, hi=new_hi, body=body)]
+
+        return super().map_s(s)
+
+    def map_e(self,e):
+        if self.inside and isinstance(e, LoopIR.BinOp):
+            #40 * ow + (40 * okh + ikh)
+            var = LoopIR.Read(self.new_var, [], T.index, e.srcinfo)
+            if isinstance(e.lhs, LoopIR.BinOp):
+                if isinstance(e.lhs.lhs, LoopIR.Const) and isinstance(e.rhs.lhs.lhs, LoopIR.Const):
+                    b = LoopIR.BinOp('*', e.lhs.lhs, var, T.index, e.srcinfo)
+                    return LoopIR.BinOp(e.op, b, e.rhs.rhs, T.index, e.srcinfo)
+            else:
+                return var
+
+        return super().map_e(e)
+
+
+
 
 
 class _Reorder(LoopIR_Rewrite):
@@ -2765,6 +2808,7 @@ class _DoNormalize(LoopIR_Rewrite):
     # This map concatnation is handled by concat_map function.
     def __init__(self, proc):
         self.C = Sym("temporary_constant_symbol")
+        self.moddivs = []
         super().__init__(proc)
 
         self.proc = InferEffects(self.proc).result()
@@ -2804,9 +2848,13 @@ class _DoNormalize(LoopIR_Rewrite):
             e_map = self.normalize_e(e.arg)
             return { key: -e_map[key] for key in e_map }
         elif isinstance(e, LoopIR.BinOp):
-            lhs_map = self.normalize_e(e.lhs)
-            rhs_map = self.normalize_e(e.rhs)
-            return self.concat_map(e.op, lhs_map, rhs_map)
+            if e.op == '%' or e.op == '/':
+                self.moddivs.append(e)
+                return { len(self.moddivs)-1 : 1 }
+            else:
+                lhs_map = self.normalize_e(e.lhs)
+                rhs_map = self.normalize_e(e.rhs)
+                return self.concat_map(e.op, lhs_map, rhs_map)
         else:
             assert False, ("index_start should only be called by"+
                            f" an indexing expression. e was {e}")
@@ -2836,8 +2884,8 @@ class _DoNormalize(LoopIR_Rewrite):
         assert isinstance(e, LoopIR.expr)
         # Div and mod need more subtle handling. Don't normalize for now.
         # Skip ReadConfigs, they needs careful handling because they're not Sym.
-        if self.has_div_mod_config(e):
-            return e
+        #if self.has_div_mod_config(e):
+        #    return e
 
         # Make a map of symbols and coefficients
         n_map = self.normalize_e(e)
@@ -2848,7 +2896,10 @@ class _DoNormalize(LoopIR_Rewrite):
             if key == self.C:
                 return vconst
             else:
-                readkey = LoopIR.Read(key, [], e.type, e.srcinfo)
+                if isinstance(key, int):
+                    readkey = self.moddivs[key]
+                else:
+                    readkey = LoopIR.Read(key, [], e.type, e.srcinfo)
                 return LoopIR.BinOp('*', vconst, readkey, e.type, e.srcinfo)
         
         delete_zero = { key: n_map[key] for key in n_map if n_map[key] != 0 }
@@ -3643,3 +3694,4 @@ class Schedules:
     DoLiftAllocSimple  = _DoLiftAllocSimple
     DoFissionAfterSimple  = _DoFissionAfterSimple
     DoProductLoop  = _DoProductLoop
+    DoCombineLoops  = _DoCombineLoops
